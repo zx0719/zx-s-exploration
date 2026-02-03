@@ -222,7 +222,7 @@ def main():
     qwen_path = "/mnt/data/zhuxiang/Qwen/Qwen3-4B"
     remoteclip_ckpt = "/home/xingyueao/RemoteClip/chendelong/RemoteClip/RemoteCLIP-ViT-L-14.pt"
 
-    out_dir = "/mnt/data/zhuxiang/Qwen/Remote-Clip+Qwen/outputs/V2/stage1_rsicd_projector"
+    out_dir = "/mnt/data/zhuxiang/Qwen/Remote-Clip+Qwen/outputs/stage1/V2/stage1_rsicd_projector"
 
     model = Stage1ProjectorAlignModel(
         qwen_path=qwen_path,

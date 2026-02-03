@@ -12,6 +12,8 @@ from torch.utils.data import DataLoader
 
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
 from peft import LoraConfig, get_peft_model
+import swanlab
+from transformers import TrainerCallback
 
 from osvqa_dataset import OSVQAStage2RGBDataset, Stage2Collator
 
@@ -108,6 +110,39 @@ class Stage2ConnectorLoRAModel(nn.Module):
         )
         self.llm = get_peft_model(self.llm, lora_cfg)
         self.llm.print_trainable_parameters()
+
+
+class SwanLabCallback(TrainerCallback):
+    def __init__(self, project: str, exp_name: str, config: dict):
+        super().__init__()
+        self.project = project
+        self.exp_name = exp_name
+        self.config = config
+        self.run = None
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        self.run = swanlab.init(project=self.project, experiment_name=self.exp_name, config=self.config)
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if self.run is None or logs is None:
+            return
+        step = int(state.global_step)
+        try:
+            if hasattr(self, 'model') and getattr(self.model, '_last_losses', None) is not None:
+                merged = dict(logs)
+                merged.update(self.model._last_losses)
+                # 如果有示例输出也一并上传（字符串）
+                if getattr(self.model, '_last_sample', None) is not None:
+                    merged['sample_output'] = self.model._last_sample
+                self.run.log(merged, step=step)
+                return
+        except Exception:
+            pass
+        self.run.log(logs, step=step)
+
+    def on_train_end(self, args, state, control, **kwargs):
+        if self.run is not None:
+            self.run.finish()
 
     def _merge(self, input_ids, attention_mask, labels, vision_tokens):
         """
@@ -217,7 +252,38 @@ class Stage2ConnectorLoRAModel(nn.Module):
     def forward(self, input_ids, attention_mask, labels, pixel_values, **kwargs):
         vision_tokens = self.vision_tower(pixel_values)  # (B,196,H) 一般是
         inputs_embeds, attn, new_labels = self._merge(input_ids, attention_mask, labels, vision_tokens)
-        return self.llm(inputs_embeds=inputs_embeds, attention_mask=attn, labels=new_labels)
+        lm_outputs = self.llm(inputs_embeds=inputs_embeds, attention_mask=attn, labels=new_labels)
+
+        # 保存子损失以便回调上报
+        try:
+            lm_loss = lm_outputs.loss if getattr(lm_outputs, "loss", None) is not None else None
+            self._last_losses = {
+                'lm_loss': float(lm_loss.detach().cpu()) if lm_loss is not None else None,
+            }
+        except Exception:
+            self._last_losses = None
+
+        # 尝试生成一个示例输出（只对 batch 首样本，no_grad 避免影响梯度）
+        try:
+            with torch.no_grad():
+                gen_ids = self.llm.generate(
+                    inputs_embeds=inputs_embeds[:1].detach(),
+                    attention_mask=attn[:1],
+                    max_new_tokens=16,
+                    do_sample=False,
+                    num_beams=1,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                )
+                pred = self.tokenizer.decode(gen_ids[0], skip_special_tokens=True).strip()
+                # 截断过长
+                if len(pred) > 512:
+                    pred = pred[:512]
+                self._last_sample = pred
+        except Exception:
+            self._last_sample = None
+
+        return lm_outputs
 
     @torch.no_grad()
     def generate_answer_from_prompt(self, prompt_text: str, pixel_values, max_new_tokens: int = 16) -> str:
@@ -364,9 +430,9 @@ def main():
     remoteclip_ckpt = "/home/xingyueao/RemoteClip/chendelong/RemoteClip/RemoteCLIP-ViT-L-14.pt"
 
     # (可选) 继续训练 Stage1 projector/connector
-    stage1_projector = "/mnt/data/zhuxiang/Qwen/Remote-Clip+Qwen/outputs/V1/stage1_rsicd_projector/projector.pt"
+    stage1_projector = "/mnt/data/zhuxiang/Qwen/Remote-Clip+Qwen/outputs/stage2/V1/stage1_rsicd_projector/projector.pt"
 
-    out_dir = "/mnt/data/zhuxiang/Qwen/Remote-Clip+Qwen/outputs/V1/stage2_osvqa_rgb_connector_lora"
+    out_dir = "/mnt/data/zhuxiang/Qwen/Remote-Clip+Qwen/outputs/stage2/V1/stage2_osvqa_rgb_connector_lora"
 
     model = Stage2ConnectorLoRAModel(
         qwen_path=qwen_path,
@@ -434,6 +500,22 @@ def main():
         data_collator=collator,
     )
 
+    # SwanLab callback：新建项目并与 swanlab 同步上报（将 model 绑定到 callback）
+    swan_project = os.environ.get('SWAN_PROJECT', 'qwen3-remoteclip-stage2')
+    swan_exp = os.environ.get('SWAN_EXP', 'osvqa_connector')
+    swan_cfg = {
+        'qwen_path': qwen_path,
+        'remoteclip_ckpt': remoteclip_ckpt,
+        'stage1_projector': stage1_projector,
+        'out_dir': out_dir,
+        'batch_size': args.per_device_train_batch_size,
+        'grad_accum': args.gradient_accumulation_steps,
+    }
+    swan_cb = SwanLabCallback(project=swan_project, exp_name=swan_exp, config=swan_cfg)
+    swan_cb.model = model
+
+    trainer.add_callback(swan_cb)
+
     trainer.train()
 
     os.makedirs(out_dir, exist_ok=True)
@@ -451,42 +533,7 @@ def main():
     model.tokenizer.save_pretrained(out_dir)
     print("Saved tokenizer:", out_dir)
 
-    # ====== 评测：val / test，按任务分组 ======
-    # 评测集需要 return_meta=True
-    val_ds = OSVQAStage2RGBDataset(
-        ann_path=ann_val,
-        rgb_dir=rgb_dir,
-        preprocess=model.vision_tower.preprocess,
-        tokenizer=model.tokenizer,
-        image_token="<image>",
-        max_length=512,
-        add_task_prefix=True,
-        return_meta=True,
-    )
-    test_ds = OSVQAStage2RGBDataset(
-        ann_path=ann_test,
-        rgb_dir=rgb_dir,
-        preprocess=model.vision_tower.preprocess,
-        tokenizer=model.tokenizer,
-        image_token="<image>",
-        max_length=512,
-        add_task_prefix=True,
-        return_meta=True,
-    )
-
-    # 生成式评测（建议 batch_size=1 最稳）
-    val_report = evaluate_osvqa(model, val_ds, batch_size=1)
-    test_report = evaluate_osvqa(model, test_ds, batch_size=1)
-
-    pretty_print_report("VAL", val_report)
-    pretty_print_report("TEST", test_report)
-
-    # 保存报告
-    with open(os.path.join(out_dir, "eval_val.json"), "w", encoding="utf-8") as f:
-        json.dump(val_report, f, ensure_ascii=False, indent=2)
-    with open(os.path.join(out_dir, "eval_test.json"), "w", encoding="utf-8") as f:
-        json.dump(test_report, f, ensure_ascii=False, indent=2)
-    print("\nSaved eval reports to:", out_dir)
+    print("Training finished. For evaluation, run the separate eval script: train_stage2/V1/eval_stage2_osvqa.py")
 
 
 if __name__ == "__main__":

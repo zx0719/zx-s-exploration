@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=1 python /home/zhuxiang/Qwen/Remote-Clip+Qwen/train_stage2/V1/train_stage2_osvqa.py
