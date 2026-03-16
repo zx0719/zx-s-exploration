@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 python /home/zhuxiang/Qwen/Remote-Clip+Qwen/train_stage1/test/test_infer_load_projector.py
