@@ -1,0 +1,5 @@
+_target_: src.logger.experiment.SwanLabLogger
+project: qwen-remoteclip
+experiment_name: default
+enabled: true
+config: {}

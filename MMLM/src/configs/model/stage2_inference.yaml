@@ -1,0 +1,17 @@
+_target_: src.model.remote_qwen.Stage2ConnectorLoRAModel
+qwen_path: ???
+remoteclip_ckpt_path: ???
+remoteclip_repo_path: ???
+image_token: "<image>"
+trust_remote_code: false
+torch_dtype: auto
+remoteclip_mm_hidden_size: 1024
+projector_weights_path: ???
+enable_lora: true
+train_lora: false
+lora_weights_path: ???
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules: null
+print_trainable_parameters: false

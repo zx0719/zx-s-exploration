@@ -1,0 +1,11 @@
+_target_: src.model.remote_qwen.Stage1AlignModel
+qwen_path: ???
+remoteclip_ckpt_path: ???
+remoteclip_repo_path: ???
+image_token: "<image>"
+trust_remote_code: false
+torch_dtype: auto
+remoteclip_mm_hidden_size: 1024
+projector_weights_path: null
+align_weight: 1.0
+align_temp: 0.07

@@ -1,0 +1,14 @@
+train:
+  _target_: src.datasets.stage1.Stage1MixedDataset
+  rsicd_ann_path: ???
+  rsicd_images_dir: ???
+  aid_root: null
+  include_rsicd: true
+  include_aid: true
+  image_token: ${model.image_token}
+  max_length: 256
+  seed: ${seed}
+  aid_templates: null
+
+collator:
+  _target_: src.datasets.collators.CausalLMCollator
