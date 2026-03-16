@@ -1,0 +1,25 @@
+_target_: src.trainer.stage2.Stage2TrainerRunner
+save_connector_name: connector.pt
+save_lora_subdir: lora
+sample_log_every: 20
+sample_max_new_tokens: 16
+training_args:
+  output_dir: outputs/stage2
+  per_device_train_batch_size: 16
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  num_train_epochs: 2
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  logging_steps: 10
+  save_strategy: steps
+  save_steps: 5000
+  save_total_limit: 3
+  bf16: true
+  optim: adamw_torch_fused
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  report_to: none
+  remove_unused_columns: false
+  dataloader_num_workers: 4
+  dataloader_pin_memory: true

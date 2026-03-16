@@ -1,0 +1,11 @@
+train:
+  _target_: src.datasets.stage2.OSVQARemoteVQADataset
+  ann_path: ???
+  rgb_dir: ???
+  image_token: ${model.image_token}
+  max_length: 512
+  add_task_prefix: true
+  return_meta: false
+
+collator:
+  _target_: src.datasets.collators.CausalLMCollator

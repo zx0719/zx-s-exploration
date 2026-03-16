@@ -1,0 +1,12 @@
+defaults:
+  - model: stage1_align
+  - datasets: stage1_mixed
+  - trainer: stage1
+  - logger: null
+  - _self_
+
+seed: 42
+
+hydra:
+  job:
+    chdir: false

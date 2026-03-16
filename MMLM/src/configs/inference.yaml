@@ -1,0 +1,11 @@
+defaults:
+  - model: stage2_inference
+  - datasets: stage2_eval_osvqa
+  - inferencer: osvqa_eval
+  - _self_
+
+seed: 42
+
+hydra:
+  job:
+    chdir: false

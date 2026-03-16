@@ -1,0 +1,5 @@
+_target_: src.trainer.inferencer.OSVQAEvaluationRunner
+device: cuda
+batch_size: 1
+max_new_tokens: 16
+report_path: outputs/osvqa_eval_report.json
