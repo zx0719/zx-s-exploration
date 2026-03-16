@@ -15,14 +15,15 @@ def main():
     )
 
     # 2) load trained projector
-    projector_path = "/mnt/data/zhuxiang/Qwen/Remote-Clip+Qwen/outputs/V1/stage1_rsicd_projector/projector.pt"
+    # projector_path = "/mnt/data/zhuxiang/Qwen/Remote-Clip+Qwen/outputs/V1/stage1_rsicd_projector/projector.pt"
+    projector_path =  "/mnt/data/zhuxiang/Qwen/Remote-Clip+Qwen/outputs/V2/stage1_rsicd_projector/projector.pt" #加大训练数据量和训练轮数
     state = torch.load(projector_path, map_location="cpu")
     model.vision_tower.projector.load_state_dict(state, strict=True)
     model.eval()
 
     # 2) preprocess image (用你 RemoteVisionTower 内的 preprocess)
-    # img = Image.open("/home/xingyueao/RemoteClip/assets/airport.jpg").convert("RGB")
-    img = Image.open("/home/zhuxiang/Qwen/Remote-Clip+Qwen/train_stage1/test/test.jpg").convert("RGB")
+    img = Image.open("/home/xingyueao/RemoteClip/assets/airport.jpg").convert("RGB")
+    # img = Image.open("/home/zhuxiang/Qwen/Remote-Clip+Qwen/train_stage1/test/test1.jpg").convert("RGB")
     pixel_values = model.vision_tower.preprocess(img).unsqueeze(0)  # (1,3,224,224)
 
     # 3) prompt 必须包含 <image>
